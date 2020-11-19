@@ -1,0 +1,58 @@
+version: 0.2
+# env:
+#   variables:
+     # key: "value"
+     # key: "value"
+  #parameter-store:
+     # key: "value"
+     # key: "value"
+  #secrets-manager:
+     # key: secret-id:json-key:version-stage:version-id
+     # key: secret-id:json-key:version-stage:version-id
+  #exported-variables:
+     # - variable
+     # - variable
+phases:
+  install:
+    commands:
+       - yum update -y
+       - yum install -y curl
+       - yum install -y nodejs
+       - npm install -g serverless
+       - npm install serverless-deployment-bucket 
+       - serverless --version
+  #pre_build:
+    #commands:
+      # - command
+      # - command
+  build:
+    commands:
+      - serverless package --stage prod
+      - aws cloudformation create-change-set 
+        --change-set-name test-change 
+        --stack-name sls-test-1 
+        --template-body file://.serverless/cloudformation-template-update-stack.json 
+        --capabilities CAPABILITY_NAMED_IAM 
+        --change-set-type CREATE
+  #post_build:
+    #commands:
+      # - command
+      # - command
+#reports:
+  #report-name-or-arn:
+    #files:
+      # - location
+      # - location
+    #base-directory: location
+    #discard-paths: yes
+    #file-format: JunitXml | CucumberJson
+#artifacts:
+  #files:
+    # - location
+    # - location
+  #name: $(date +%Y-%m-%d)
+  #discard-paths: yes
+  #base-directory: location
+#cache:
+  #paths:
+    # - paths

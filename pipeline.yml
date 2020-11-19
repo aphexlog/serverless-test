@@ -37,7 +37,12 @@ Parameters:
   BuildSpec:
     Type: String
     Description: The path(s) to your buildspec file.
-    Default: buildspecs/build-with-cache.yml
+    Default: buildspecs/buildspec.yml
+
+  LogGroupName:
+    Type: String
+    Description: Cloudwatch log group name.
+    Default: CodeBuild-LogGroup
 
 ###########################################################################
 # Mandatory tags that will be added to all resources that support tags
@@ -67,7 +72,7 @@ Resources:
     Type: AWS::IAM::Role
     Description: Creating service role in IAM for AWS CodeBuild
     Properties:
-      RoleName: !Join ['', [!Ref 'AWS::StackName', 'CodeBuild']]
+      RoleName: !Join ['', [!Ref 'AWS::StackName', '-', 'CodeBuild']]
       AssumeRolePolicyDocument:
         Statement:
         - Action: sts:AssumeRole
@@ -75,6 +80,79 @@ Resources:
           Principal:
             Service: codebuild.amazonaws.com
       Path: /
+
+  CloudFormationTrustRole:
+    Description: Creating service role in IAM for AWS CloudFormation
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service:
+            - cloudformation.amazonaws.com
+      Path: /
+      Policies:
+      - PolicyDocument:
+          Statement:
+          - Action:
+            - iam:CreateRole
+            - iam:AttachRolePolicy
+            - iam:PutRolePolicy
+            - iam:PassRole
+            - iam:DetachRolePolicy
+            - iam:ListRolePolicies
+            - iam:GetRole
+            - iam:DeleteRolePolicy
+            - iam:UpdateRoleDescription
+            - iam:ListRoles
+            - iam:DeleteRole
+            - iam:GetRolePolicy
+            - iam:CreateInstanceProfile
+            - iam:AddRoleToInstanceProfile
+            - iam:DeleteInstanceProfile
+            - iam:GetInstanceProfile
+            - iam:ListInstanceProfiles
+            - iam:ListInstanceProfilesForRole
+            - iam:RemoveRoleFromInstanceProfile
+            Effect: Allow
+            Resource:
+            - !Sub "arn:aws:iam::*:role/${AWS::StackName}*"
+            - !Sub "arn:aws:iam::*:instance-profile/${AWS::StackName}*"
+          - Action:
+            - ssm:GetParameters
+            - autoscaling:*
+            - ec2:*
+            - codedeploy:*
+            - elasticloadbalancing:*
+            Effect: Allow
+            Resource: '*'
+        PolicyName: !Join ['', [!Ref 'AWS::StackName', 'CloudFormationRolePolicy']]
+      RoleName: !Join ['', [!Ref 'AWS::StackName', 'CloudFormation']]
+    Type: AWS::IAM::Role
+
+
+  CodeBuildPolicy:
+    Type: AWS::IAM::Policy
+    Description: Setting IAM policy for service role for CodeBuild
+    Properties:
+      PolicyDocument:
+        Statement:
+        - Action:
+          - logs:CreateLogGroup
+          - logs:CreateLogStream
+          - logs:PutLogEvents
+          Effect: Allow
+          Resource: '*'
+        - Action:
+          - s3:PutObject
+          - s3:GetObject
+          - s3:GetObjectVersion
+          Effect: Allow
+          Resource: '*'
+      PolicyName: !Join ['', [!Ref 'AWS::StackName', '-', 'CodeBuildPolicy']]
+      Roles:
+      - !Ref 'CodeBuildRole'
 
   codepipeline:
     Type: AWS::CodeBuild::Project
@@ -93,6 +171,11 @@ Resources:
         ComputeType: BUILD_GENERAL1_SMALL
         Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
         Type: LINUX_CONTAINER
+      LogsConfig:
+        CloudWatchLogs:
+          GroupName: !Ref LogGroupName
+          StreamName: !Join ['', [!Ref 'AWS::StackName', '-', 'logstream']]
+          Status: ENABLED
       Tags: 
         - Key: EnvironmentStage
           Value: !Ref EnvironmentStage
