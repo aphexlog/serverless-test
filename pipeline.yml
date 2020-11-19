@@ -1,0 +1,98 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: |
+  Builds an AWS CodePipeline for packaging your serverless application deployment files and deploying them to AWS CloudFrmation.
+
+###############################################################################
+# Parameter groups
+###############################################################################
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+      - Label:
+          default: Environment
+        Parameters:
+          - EnvironmentStage
+      - Label:
+          default: Source Parameters
+        Parameters:
+          - SourceLocation
+          - SourceVersion
+          - BuildSpec 
+
+###############################################################################
+# Parameters 
+###############################################################################
+Parameters: 
+
+  SourceLocation: 
+    Type: String
+    Description: The https URL to source from.
+    Default: https://github.com/aphexlog/serverless-test.git
+
+  SourceVersion:
+    Type: String
+    Description: The branch or tag to source from.
+    Default: Master
+
+  BuildSpec:
+    Type: String
+    Description: The path(s) to your buildspec file.
+    Default: buildspecs/build-with-cache.yml
+
+###########################################################################
+# Mandatory tags that will be added to all resources that support tags
+###########################################################################
+  EnvironmentStage:
+    Type: String
+    Description: The environment tag is used to designate the Environment Stage of the associated AWS resource.
+    AllowedValues:
+      - dev
+      - test
+      - pre-prod
+      - prod
+    Default: dev
+
+###############################################################################
+# Conditions
+############################################################################### 
+Conditions:
+  IsProd: !Equals [!Ref EnvironmentStage, 'prod'] 
+
+###############################################################################
+# Resources 
+###############################################################################
+Resources: 
+
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Description: Creating service role in IAM for AWS CodeBuild
+    Properties:
+      RoleName: !Join ['', [!Ref 'AWS::StackName', 'CodeBuild']]
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+      Path: /
+
+  codepipeline:
+    Type: AWS::CodeBuild::Project
+    Properties: 
+      Description: CodeBuild project to package & deploy your serverless application.
+      Name: !Join ['', [!Ref 'AWS::StackName', '-', 'codebuild']]
+      Artifacts:
+        Type: NO_ARTIFACTS
+      BadgeEnabled: false
+      ServiceRole: !Ref CodeBuildRole
+      Source:
+        Type: GITHUB
+        Location: !Ref SourceLocation
+        BuildSpec: !Ref BuildSpec
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+        Type: LINUX_CONTAINER
+      Tags: 
+        - Key: EnvironmentStage
+          Value: !Ref EnvironmentStage
