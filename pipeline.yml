@@ -80,18 +80,6 @@ Resources:
           Principal:
             Service: codebuild.amazonaws.com
       Path: /
-
-  CloudFormationTrustRole:
-    Description: Creating service role in IAM for AWS CloudFormation
-    Properties:
-      AssumeRolePolicyDocument:
-        Statement:
-        - Action: sts:AssumeRole
-          Effect: Allow
-          Principal:
-            Service:
-            - cloudformation.amazonaws.com
-      Path: /
       Policies:
       - PolicyDocument:
           Statement:
@@ -127,10 +115,16 @@ Resources:
             - elasticloadbalancing:*
             Effect: Allow
             Resource: '*'
+          - Action:
+            - cloudformation:DescribeStacks
+            - cloudformation:DescribeChangeSet
+            - cloudformation:CreateChangeSet
+            - cloudformation:DeleteChangeSet
+            - cloudformation:ExecuteChangeSet
+            Effect: Allow
+            Resource: '*'
+            # - !Join [':', ['arn:aws:cloudformation', !Ref 'AWS::Region', !Ref 'AWS::AccountId', !Join ['/', ['stack', !Ref 'AWS::StackName', '*']]]]
         PolicyName: !Join ['', [!Ref 'AWS::StackName', 'CloudFormationRolePolicy']]
-      RoleName: !Join ['', [!Ref 'AWS::StackName', 'CloudFormation']]
-    Type: AWS::IAM::Role
-
 
   CodeBuildPolicy:
     Type: AWS::IAM::Policy
@@ -179,3 +173,10 @@ Resources:
       Tags: 
         - Key: EnvironmentStage
           Value: !Ref EnvironmentStage
+
+###############################################################################
+# Outputs 
+###############################################################################
+Outputs:
+  StackArn:
+    Value: !Ref 'AWS::StackId'
