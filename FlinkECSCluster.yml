@@ -1,0 +1,153 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: 'CloudFormation Template to Create ECS Apache Flink Cluster'
+
+###############################################################################
+# Parameters 
+###############################################################################
+Parameters:
+
+  VPCName:
+    Type: String
+    Description: Enter your VPC ID
+    Default: vpc-1d4b8a7b
+
+  SubnetIds:
+    Type: CommaDelimitedList
+    Description: Enter your subnet IDs
+    Default: "subnet-466da11c,subnet-6fe65509"
+
+  ImageURL:
+    Type: String
+    Description: URL of the image to deploy to the cluster
+    Default: '658644317453.dkr.ecr.us-west-1.amazonaws.com/teststack-flink:latest'
+
+  # TestParam:
+  #   Type: List<AWS::EC2::Subnet::Id>
+  #   Description: List of EC2 subnet IDs
+
+###########################################################################
+# Mandatory tags that will be added to all resources that support tags
+###########################################################################
+  EnvironmentStage:
+    Type: String
+    Description: The environment tag is used to designate the Environment Stage of the associated AWS resource.
+    AllowedValues:
+      - dev
+      - test
+      - pre-prod
+      - prod
+    Default: test
+
+###############################################################################
+# Conditions
+############################################################################### 
+Conditions:
+  IsProd: !Equals [!Ref EnvironmentStage, 'prod']
+
+###############################################################################
+# Resources 
+###############################################################################
+Resources:
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Join ['', [!Ref EnvironmentStage, '-', !Ref 'AWS::StackName']]
+
+  FlinkSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: !Ref 'AWS::StackName'
+      GroupName: !Sub 'flink-${AWS::StackName}-sg'
+      VpcId: !Ref VPCName
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8081
+          ToPort: 8081
+      Tags:
+        -
+          Key: EnvironmentStage
+          Value: !Ref EnvironmentStage  
+
+  ECSCluster:
+    Type: 'AWS::ECS::Cluster'
+    Properties:
+      ClusterName: !Join ['', [!Ref EnvironmentStage, '-', !Ref 'AWS::StackName']]
+      Tags:
+        -
+          Key: EnvironmentStage
+          Value: !Ref EnvironmentStage
+
+  TaskDefinition:
+    Type: 'AWS::ECS::TaskDefinition'
+    Properties:
+      Family: flink
+      Memory: 2048
+      Cpu: 512
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE 
+      ContainerDefinitions:
+        - Name: flink-jobmanager
+          Image: !Ref ImageURL
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8081
+              HostPort: 8081
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: !Ref 'AWS::StackName'
+          Command:
+            - jobmanager
+        - Name: flink-taskmanager
+          Image: !Ref ImageURL
+          Essential: true
+          Command:
+            - taskmanager
+      ExecutionRoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/ecsTaskExecutionRole
+      Volumes: []
+      TaskRoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/ecsTaskExecutionRole
+      Tags:
+        -
+          Key: EnvironmentStage
+          Value: !Ref EnvironmentStage
+
+  Service:
+    Type: 'AWS::ECS::Service'
+    Properties:
+      ServiceName: !Join ['', [!Ref EnvironmentStage, '-', !Ref 'AWS::StackName']]
+      Cluster: !GetAtt ECSCluster.Arn
+      LaunchType: FARGATE
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 75
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: 1
+      DeploymentController:
+        Type: ECS # will want to change to CODE_DEPLOY eventually to support blue/green deployments
+      EnableECSManagedTags: true
+      PropagateTags: TASK_DEFINITION
+      SchedulingStrategy: REPLICA
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref FlinkSecurityGroup
+          Subnets:
+            - subnet-466da11c
+            - subnet-6fe65509
+      Tags:
+        -
+          Key: EnvironmentStage
+          Value: !Ref EnvironmentStage
+
+###############################################################################
+# Outputs 
+###############################################################################
+Outputs:
+  ImageURL:
+    Description: ECR image URI
+    Value: !Ref ImageURL
